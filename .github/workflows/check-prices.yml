@@ -1,0 +1,40 @@
+name: Chequeo de precios de vuelos
+
+on:
+  schedule:
+    # Cada 3 horas. Cambia esta expresion cron si quieres otra frecuencia.
+    - cron: "0 */3 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  check-prices:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Ejecutar chequeo de precios
+        env:
+          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python script.py
+
+      - name: Guardar historial de precios actualizado
+        run: |
+          git config user.name "flight-price-bot"
+          git config user.email "actions@github.com"
+          git add prices_history.json
+          git diff --quiet --cached || git commit -m "Actualiza historial de precios [skip ci]"
+          git push
