@@ -1,1 +1,10 @@
-{}
+{
+  "lima_tarapoto": {
+    "last_summary_date": "2026-07-05",
+    "price": 277,
+    "currency": "PEN",
+    "checked_at": "2026-07-05T23:20:14.466149+00:00",
+    "first_price": 277,
+    "min_price": 277
+  }
+}
