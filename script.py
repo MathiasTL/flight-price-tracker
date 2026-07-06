@@ -111,6 +111,8 @@ def fetch_cheapest_price(route):
     if "error" in data:
         raise RuntimeError(data["error"])
 
+    search_url = (data.get("search_metadata") or {}).get("google_flights_url")
+
     min_minutes = parse_hhmm(window_from) if window_from else None
     max_minutes = parse_hhmm(window_to) if window_to else None
 
@@ -129,9 +131,9 @@ def fetch_cheapest_price(route):
             candidates.append(price)
 
     if not candidates:
-        return None
+        return None, search_url
 
-    return min(candidates)
+    return min(candidates), search_url
 
 
 def format_route_label(route):
@@ -168,10 +170,16 @@ def process_route(route, history):
         return
 
     try:
-        current_price = fetch_cheapest_price(route)
+        current_price, search_url = fetch_cheapest_price(route)
     except Exception as e:
         print(f"[{route_id}] Error consultando precio: {e}")
         return
+
+    link_line = (
+        f'\n🔗 <a href="{search_url}">Ver vuelos en Google Flights</a>'
+        if search_url
+        else ""
+    )
 
     if current_price is None:
         print(f"[{route_id}] No se encontraron vuelos dentro de la ventana horaria.")
@@ -196,6 +204,7 @@ def process_route(route, history):
             f"{label}\n"
             f"Precio base: <b>{current_price} {currency}</b>\n"
             f"Te avisaré con cada bajada y con un resumen diario."
+            f"{link_line}"
         )
         entry["last_summary_date"] = today_lima
     elif previous_price is not None and current_price < previous_price:
@@ -206,6 +215,7 @@ def process_route(route, history):
             f"Precio actual: <b>{current_price} {currency}</b> "
             f"(bajó {diff:.2f} {currency}, antes {previous_price} {currency})\n"
             f"Mínimo visto: {min_price} {currency} | Base: {first_price} {currency}"
+            f"{link_line}"
         )
     else:
         threshold = route.get("price_alert_threshold")
@@ -215,6 +225,7 @@ def process_route(route, history):
                 f"{label}\n"
                 f"Precio actual: <b>{current_price} {currency}</b> "
                 f"(umbral: {threshold} {currency})"
+                f"{link_line}"
             )
 
     if (
@@ -226,6 +237,7 @@ def process_route(route, history):
             f"{label}\n"
             f"Precio actual: <b>{current_price} {currency}</b>\n"
             f"Mínimo visto: {min_price} {currency} | Base: {first_price} {currency}"
+            f"{link_line}"
         )
         entry["last_summary_date"] = today_lima
 
