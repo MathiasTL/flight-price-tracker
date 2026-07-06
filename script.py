@@ -130,9 +130,41 @@ def fetch_cheapest_price(route):
                 cheapest = (price, flight)
 
     if cheapest is None:
-        return None, search_url, []
+        return None, search_url, [], None
 
-    return cheapest[0], search_url, extract_baggage_info(cheapest[1])
+    return (
+        cheapest[0],
+        search_url,
+        extract_baggage_info(cheapest[1]),
+        flight_details(cheapest[1]),
+    )
+
+
+def flight_details(flight):
+    """'LATAM (LA 2311) · sale 06:30 → llega 07:55' del vuelo de ida, o None."""
+    legs = flight.get("flights") or []
+    if not legs:
+        return None
+    airlines, numbers = [], []
+    for leg in legs:
+        airline = leg.get("airline")
+        if airline and airline not in airlines:
+            airlines.append(airline)
+        number = leg.get("flight_number")
+        if number:
+            numbers.append(number)
+
+    def hhmm(leg_airport):
+        time_str = (leg_airport or {}).get("time", "")
+        parts = time_str.split(" ")
+        return parts[1] if len(parts) > 1 else "?"
+
+    dep = hhmm(legs[0].get("departure_airport"))
+    arr = hhmm(legs[-1].get("arrival_airport"))
+    airline_txt = " + ".join(airlines) if airlines else "Aerolínea desconocida"
+    numbers_txt = f" ({', '.join(numbers)})" if numbers else ""
+    stops = f", {len(legs) - 1} escala(s)" if len(legs) > 1 else ""
+    return f"{airline_txt}{numbers_txt} · sale {dep} → llega {arr}{stops}"
 
 
 BAGGAGE_KEYWORDS = ("maleta", "equipaje", "bolso", "carry", "bag")
@@ -184,7 +216,7 @@ def process_route(route, history):
         return
 
     try:
-        current_price, search_url, baggage = fetch_cheapest_price(route)
+        current_price, search_url, baggage, details = fetch_cheapest_price(route)
     except Exception as e:
         print(f"[{route_id}] Error consultando precio: {e}")
         return
@@ -193,13 +225,15 @@ def process_route(route, history):
         print(f"[{route_id}] No se encontraron vuelos dentro de la ventana horaria.")
         return
 
+    details_line = f"\n🛫 {details}" if details else ""
     baggage_line = (
         f"\n🧳 {' | '.join(baggage)}"
         if baggage
         else "\n🧳 Equipaje: la aerolínea no lo especifica en Google Flights"
     )
     link_line = (
-        f'\n🔗 <a href="{search_url}">Ver vuelos en Google Flights</a>'
+        f'\n🔗 <a href="{search_url}">Buscar en Google Flights</a> '
+        f"(muestra todos los horarios; tu precio es el del vuelo indicado arriba)"
         if search_url
         else ""
     )
@@ -222,7 +256,7 @@ def process_route(route, history):
             f"{label}\n"
             f"Precio base: <b>{current_price} {currency}</b>\n"
             f"Te enviaré el precio en cada chequeo, suba o baje."
-            f"{baggage_line}{link_line}"
+            f"{details_line}{baggage_line}{link_line}"
         )
     else:
         if previous_price is None or current_price == previous_price:
@@ -242,7 +276,7 @@ def process_route(route, history):
             f"{label}\n"
             f"Precio actual: <b>{current_price} {currency}</b>{detail}\n"
             f"Mínimo visto: {min_price} {currency} | Base: {first_price} {currency}"
-            f"{baggage_line}{link_line}"
+            f"{details_line}{baggage_line}{link_line}"
         )
 
     entry.update(
