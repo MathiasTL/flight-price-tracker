@@ -2,8 +2,8 @@ name: Chequeo de precios de vuelos
 
 on:
   schedule:
-    # Cada 3 horas. Cambia esta expresion cron si quieres otra frecuencia.
-    - cron: "0 */3 * * *"
+    # Cada 2 horas. Cambia esta expresion cron si quieres otra frecuencia.
+    - cron: "0 */2 * * *"
   workflow_dispatch: {}
 
 permissions:

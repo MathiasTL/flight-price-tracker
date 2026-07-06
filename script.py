@@ -1,10 +1,9 @@
 """
-Chequea precios de vuelos vía SerpAPI (Google Flights) y notifica por Telegram:
-- Primer chequeo: mensaje con el precio base.
-- Cada bajada respecto al chequeo anterior: alerta inmediata.
-- Resumen diario (primer chequeo desde las 08:00 hora de Perú).
-Soporta ventana horaria de salida para el vuelo de ida y fecha de fin de
-monitoreo (active_until) por ruta, definidas en routes.json.
+Chequea precios de vuelos vía SerpAPI (Google Flights) y notifica por Telegram
+en cada chequeo: precio actual (subió/bajó/sin cambio), mínimo visto, precio
+base, equipaje incluido y link a la búsqueda. Soporta ventana horaria de
+salida para el vuelo de ida y fecha de fin de monitoreo (active_until) por
+ruta, definidas en routes.json.
 """
 
 import json
@@ -27,7 +26,6 @@ SERPAPI_URL = "https://serpapi.com/search.json"
 
 # Hora de Perú (UTC-5, sin horario de verano)
 LIMA_TZ = timezone(timedelta(hours=-5))
-SUMMARY_HOUR = 8  # resumen diario a partir de esta hora (Lima)
 
 
 def load_json(path, default):
@@ -116,7 +114,7 @@ def fetch_cheapest_price(route):
     min_minutes = parse_hhmm(window_from) if window_from else None
     max_minutes = parse_hhmm(window_to) if window_to else None
 
-    candidates = []
+    cheapest = None
     for key in ("best_flights", "other_flights"):
         for flight in data.get(key, []):
             price = flight.get("price")
@@ -128,12 +126,28 @@ def fetch_cheapest_price(route):
                 # la ventana exacta y se descarta lo que no se pueda verificar
                 if dep is None or dep < min_minutes or dep > max_minutes:
                     continue
-            candidates.append(price)
+            if cheapest is None or price < cheapest[0]:
+                cheapest = (price, flight)
 
-    if not candidates:
-        return None, search_url
+    if cheapest is None:
+        return None, search_url, []
 
-    return min(candidates), search_url
+    return cheapest[0], search_url, extract_baggage_info(cheapest[1])
+
+
+BAGGAGE_KEYWORDS = ("maleta", "equipaje", "bolso", "carry", "bag")
+
+
+def extract_baggage_info(flight):
+    """Textos sobre equipaje que Google Flights reporta para este vuelo."""
+    texts = list(flight.get("extensions") or [])
+    for leg in flight.get("flights") or []:
+        texts.extend(leg.get("extensions") or [])
+    baggage = []
+    for text in texts:
+        if any(k in text.lower() for k in BAGGAGE_KEYWORDS) and text not in baggage:
+            baggage.append(text)
+    return baggage
 
 
 def format_route_label(route):
@@ -170,20 +184,25 @@ def process_route(route, history):
         return
 
     try:
-        current_price, search_url = fetch_cheapest_price(route)
+        current_price, search_url, baggage = fetch_cheapest_price(route)
     except Exception as e:
         print(f"[{route_id}] Error consultando precio: {e}")
         return
 
+    if current_price is None:
+        print(f"[{route_id}] No se encontraron vuelos dentro de la ventana horaria.")
+        return
+
+    baggage_line = (
+        f"\n🧳 {' | '.join(baggage)}"
+        if baggage
+        else "\n🧳 Equipaje: la aerolínea no lo especifica en Google Flights"
+    )
     link_line = (
         f'\n🔗 <a href="{search_url}">Ver vuelos en Google Flights</a>'
         if search_url
         else ""
     )
-
-    if current_price is None:
-        print(f"[{route_id}] No se encontraron vuelos dentro de la ventana horaria.")
-        return
 
     currency = route.get("currency", "USD")
     previous_price = entry.get("price")
@@ -192,7 +211,6 @@ def process_route(route, history):
 
     print(f"[{route_id}] Precio actual: {current_price} {currency} (anterior: {previous_price})")
 
-    today_lima = now_lima.date().isoformat()
     new_min = min_price is None or current_price < min_price
     min_price = current_price if new_min else min_price
 
@@ -203,43 +221,29 @@ def process_route(route, history):
             f"✅ <b>Monitoreo iniciado</b>\n"
             f"{label}\n"
             f"Precio base: <b>{current_price} {currency}</b>\n"
-            f"Te avisaré con cada bajada y con un resumen diario."
-            f"{link_line}"
-        )
-        entry["last_summary_date"] = today_lima
-    elif previous_price is not None and current_price < previous_price:
-        diff = previous_price - current_price
-        send_telegram_message(
-            f"✈️ <b>Bajada de precio</b>\n"
-            f"{label}\n"
-            f"Precio actual: <b>{current_price} {currency}</b> "
-            f"(bajó {diff:.2f} {currency}, antes {previous_price} {currency})\n"
-            f"Mínimo visto: {min_price} {currency} | Base: {first_price} {currency}"
-            f"{link_line}"
+            f"Te enviaré el precio en cada chequeo, suba o baje."
+            f"{baggage_line}{link_line}"
         )
     else:
-        threshold = route.get("price_alert_threshold")
-        if threshold is not None and current_price <= threshold:
-            send_telegram_message(
-                f"✈️ <b>Precio bajo tu umbral</b>\n"
-                f"{label}\n"
-                f"Precio actual: <b>{current_price} {currency}</b> "
-                f"(umbral: {threshold} {currency})"
-                f"{link_line}"
-            )
+        if previous_price is None or current_price == previous_price:
+            header = "➡️ <b>Precio sin cambio</b>"
+            detail = ""
+        elif current_price < previous_price:
+            diff = previous_price - current_price
+            header = "📉 <b>Bajó el precio</b>"
+            detail = f" (bajó {diff:.2f}, antes {previous_price} {currency})"
+        else:
+            diff = current_price - previous_price
+            header = "📈 <b>Subió el precio</b>"
+            detail = f" (subió {diff:.2f}, antes {previous_price} {currency})"
 
-    if (
-        entry.get("last_summary_date") != today_lima
-        and now_lima.hour >= SUMMARY_HOUR
-    ):
         send_telegram_message(
-            f"📊 <b>Resumen diario</b>\n"
+            f"{header}\n"
             f"{label}\n"
-            f"Precio actual: <b>{current_price} {currency}</b>\n"
+            f"Precio actual: <b>{current_price} {currency}</b>{detail}\n"
             f"Mínimo visto: {min_price} {currency} | Base: {first_price} {currency}"
-            f"{link_line}"
+            f"{baggage_line}{link_line}"
         )
-        entry["last_summary_date"] = today_lima
 
     entry.update(
         {

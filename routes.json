@@ -10,8 +10,7 @@
       "currency": "PEN",
       "outbound_departure_from": "05:00",
       "outbound_departure_to": "13:00",
-      "active_until": "2026-07-19",
-      "price_alert_threshold": null
+      "active_until": "2026-07-19"
     }
   ]
 }

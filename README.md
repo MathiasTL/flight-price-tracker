@@ -5,15 +5,14 @@ baja. Corre gratis sobre GitHub Actions, sin servidores propios.
 
 ## Cómo funciona
 
-1. Un workflow de GitHub Actions se ejecuta cada 3 horas (`cron`).
+1. Un workflow de GitHub Actions se ejecuta cada 2 horas (`cron`).
 2. `script.py` consulta el precio más barato de cada ruta configurada en
    `routes.json` usando la API de Google Flights de SerpAPI, respetando la
    ventana horaria de salida del vuelo de ida si la definiste.
 3. Compara ese precio contra el último guardado en `prices_history.json`.
-4. Notifica por Telegram: un mensaje inicial con el precio base en el primer
-   chequeo, una alerta en cada bajada respecto al chequeo anterior, y un
-   resumen diario (primer chequeo desde las 8am hora de Perú) con el precio
-   actual, el mínimo visto y el precio base.
+4. Envía un mensaje de Telegram en **cada chequeo**, suba o baje el precio:
+   precio actual (con 📉/📈/➡️ según la variación), mínimo visto, precio
+   base, equipaje incluido según Google Flights y link a la búsqueda.
 5. Guarda el nuevo precio en `prices_history.json` y lo commitea al repo,
    para que el próximo chequeo tenga con qué comparar.
 6. Cuando llega la fecha `active_until` de una ruta, avisa una vez que el
@@ -28,12 +27,12 @@ gratis para este volumen de uso (unos segundos, varias veces al día).
 ## Paso 2: obtener una API key de SerpAPI (gratis)
 
 1. Crea una cuenta en serpapi.com.
-2. En tu dashboard, copia tu API key. El plan gratuito incluye 500
+2. En tu dashboard, copia tu API key. El plan gratuito incluye 250
    búsquedas al mes.
-3. Con un chequeo cada 3 horas (8 veces al día) y una sola ruta, usas
-   ~240 búsquedas al mes (o ~112 si el monitoreo dura 2 semanas, como
-   limita `active_until`). Si agregas más rutas, multiplica y ajusta la
-   frecuencia del cron para no pasar el límite.
+3. Con un chequeo cada 2 horas (12 veces al día) y una sola ruta, usas
+   ~168 búsquedas en las 2 semanas que dura el monitoreo (`active_until`),
+   dentro del límite. Si agregas más rutas o extiendes el plazo, multiplica
+   y ajusta la frecuencia del cron para no pasarte.
 
 ## Paso 3: crear el bot de Telegram (gratis)
 
@@ -71,8 +70,7 @@ Edita `routes.json`. La configuración actual monitorea Lima → Tarapoto:
       "currency": "PEN",
       "outbound_departure_from": "05:00",
       "outbound_departure_to": "13:00",
-      "active_until": "2026-07-19",
-      "price_alert_threshold": null
+      "active_until": "2026-07-19"
     }
   ]
 }
@@ -91,9 +89,6 @@ Campos:
 - `active_until`: fecha (`YYYY-MM-DD`, hora de Perú) en que termina el
   monitoreo de la ruta. Al vencer, te avisa una vez y deja de consultar.
   Omítelo o déjalo en `null` para monitorear indefinidamente.
-- `price_alert_threshold`: si pones un número, también te avisa cuando el
-  precio cae por debajo de ese valor, aunque no haya bajado respecto al
-  chequeo anterior. Déjalo en `null` si no lo necesitas.
 
 ## Paso 6: probarlo
 
