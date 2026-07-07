@@ -68,6 +68,9 @@ Edita `routes.json`. La configuración actual monitorea Lima → Tarapoto:
       "return_date": "2026-09-22",
       "trip_type": "round_trip",
       "currency": "PEN",
+      "adults": 3,
+      "children": 1,
+      "include_airlines": "LA",
       "outbound_departure_from": "05:00",
       "outbound_departure_to": "13:00",
       "active_until": "2026-07-19"
@@ -83,6 +86,12 @@ Campos:
   aplica si `trip_type` es `"round_trip"`.
 - `trip_type`: `"round_trip"` o `"one_way"`.
 - `currency`: moneda de los precios (`PEN`, `USD`, etc.).
+- `adults` / `children`: cantidad de pasajeros (por defecto 1 adulto). El
+  precio reportado es el total del grupo, como lo muestra Google Flights.
+- `include_airlines`: código(s) IATA de aerolínea separados por coma para
+  limitar la búsqueda (ej. `"LA"` = solo LATAM). Omítelo para todas. Si es
+  `"LA"`, el mensaje incluye además un link directo a la búsqueda en
+  latam.com con tu ruta, fechas y pasajeros.
 - `outbound_departure_from` / `outbound_departure_to`: ventana horaria
   (`HH:MM`) de salida del vuelo de ida. Solo se consideran vuelos que salen
   dentro de esa ventana. Omite ambos campos si te da igual el horario.

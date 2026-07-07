@@ -8,6 +8,9 @@
       "return_date": "2026-09-22",
       "trip_type": "round_trip",
       "currency": "PEN",
+      "adults": 3,
+      "children": 1,
+      "include_airlines": "LA",
       "outbound_departure_from": "05:00",
       "outbound_departure_to": "13:00",
       "active_until": "2026-07-19"

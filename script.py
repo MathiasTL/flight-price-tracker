@@ -83,9 +83,14 @@ def fetch_cheapest_price(route):
         "arrival_id": route["destination"],
         "outbound_date": route["outbound_date"],
         "currency": route.get("currency", "USD"),
+        "adults": route.get("adults", 1),
+        "children": route.get("children", 0),
         "hl": "es",
         "api_key": SERPAPI_KEY,
     }
+
+    if route.get("include_airlines"):
+        params["include_airlines"] = route["include_airlines"]
 
     if route.get("trip_type", "round_trip") == "round_trip":
         params["type"] = 1
@@ -167,6 +172,36 @@ def flight_details(flight):
     return f"{airline_txt}{numbers_txt} · sale {dep} → llega {arr}{stops}"
 
 
+def passengers_label(route):
+    """'3 adultos + 1 niño', o None si viaja 1 adulto solo."""
+    adults = route.get("adults", 1)
+    children = route.get("children", 0)
+    if adults == 1 and children == 0:
+        return None
+    parts = [f"{adults} adulto{'s' if adults != 1 else ''}"]
+    if children:
+        parts.append(f"{children} niño{'s' if children != 1 else ''}")
+    return " + ".join(parts)
+
+
+def latam_search_url(route):
+    """Link a la búsqueda equivalente en latam.com (solo si la ruta es LATAM)."""
+    if route.get("include_airlines") != "LA":
+        return None
+    inbound = (
+        f"&inbound={route['return_date']}T12%3A00%3A00.000Z&trip=RT"
+        if route.get("return_date")
+        else "&trip=OW"
+    )
+    return (
+        "https://www.latamairlines.com/pe/es/ofertas-vuelos"
+        f"?origin={route['origin']}&destination={route['destination']}"
+        f"&outbound={route['outbound_date']}T12%3A00%3A00.000Z{inbound}"
+        f"&adults={route.get('adults', 1)}&children={route.get('children', 0)}"
+        f"&infants=0&cabin=Economy&redemption=false"
+    )
+
+
 BAGGAGE_KEYWORDS = ("maleta", "equipaje", "bolso", "carry", "bag")
 
 
@@ -226,6 +261,8 @@ def process_route(route, history):
         return
 
     details_line = f"\n🛫 {details}" if details else ""
+    passengers = passengers_label(route)
+    passengers_line = f"\n👥 Precio total para {passengers}" if passengers else ""
     baggage_line = (
         f"\n🧳 {' | '.join(baggage)}"
         if baggage
@@ -237,6 +274,9 @@ def process_route(route, history):
         if search_url
         else ""
     )
+    latam_url = latam_search_url(route)
+    if latam_url:
+        link_line += f'\n🛒 <a href="{latam_url}">Buscar en LATAM.com</a>'
 
     currency = route.get("currency", "USD")
     previous_price = entry.get("price")
@@ -256,7 +296,7 @@ def process_route(route, history):
             f"{label}\n"
             f"Precio base: <b>{current_price} {currency}</b>\n"
             f"Te enviaré el precio en cada chequeo, suba o baje."
-            f"{details_line}{baggage_line}{link_line}"
+            f"{passengers_line}{details_line}{baggage_line}{link_line}"
         )
     else:
         if previous_price is None or current_price == previous_price:
@@ -276,7 +316,7 @@ def process_route(route, history):
             f"{label}\n"
             f"Precio actual: <b>{current_price} {currency}</b>{detail}\n"
             f"Mínimo visto: {min_price} {currency} | Base: {first_price} {currency}"
-            f"{details_line}{baggage_line}{link_line}"
+            f"{passengers_line}{details_line}{baggage_line}{link_line}"
         )
 
     entry.update(
